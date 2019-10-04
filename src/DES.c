@@ -120,7 +120,6 @@ void permute(unsigned char *data, const int *permTable, int dataLen,
     unsigned char src[20] = {0};
     memcpy(src, data, dataLen / 8 + (dataLen % 8 ? 1 : 0));
     memset(result, 0, resultLen / 8 + (resultLen % 8 ? 1 : 0));
-    // printBytes(result,8);
 
     unsigned char bit = 0;
     for (int i = 0; i < resultLen; i++) {
@@ -131,9 +130,9 @@ void permute(unsigned char *data, const int *permTable, int dataLen,
 }
 
 // bit shift, avoid hardware-related shift (big end/little end)
+// shiftBits > 0 : left shift
 void cycleShift(unsigned char *data, int shiftBits, int len,
                 unsigned char *result) {
-    // shiftBits > 0 : left shift
     unsigned char src[20] = {0};
     memcpy(src, data, len / 8 + (len % 8 ? 1 : 0));
     memset(result, 0, len / 8 + (len % 8 ? 1 : 0));
@@ -149,19 +148,10 @@ void cycleShift(unsigned char *data, int shiftBits, int len,
     result[(len - 1) / 8] |= temp >> ((len % 8) - shiftBits);
 }
 
-Key *generateSubKey(unsigned char *key) {
-
-    Key *keys = (Key *)calloc(17, sizeof(Key));
-    // printf("kk");
-    // printBytes(key, 8);
-    // permute(key,keyPC1,,keys[0].k);
+Key *generateSubKey(unsigned char *key, Key *keys) {
+    memset(keys, 0, sizeof(Key) * 17);
     permute(key, keyPC1, 64, 28, keys[0].c);
     permute(key, keyPC1 + 28, 64, 28, keys[0].d);
-    // memcpy(keys[0].c,keys[0].k,4);
-    // memcpy(keys[0].d,keys[0].k+3,4);
-    // cycleShift(keys[0].d,4,32,keys[0].d);
-    // printf("keyg");
-    // printKey(keys[0]);
     unsigned char buffer[10];
     int shiftBits;
     for (int i = 1; i <= 16; i++) {
@@ -177,8 +167,7 @@ Key *generateSubKey(unsigned char *key) {
         unsigned char temp = (keys[i].d[0] & (0xf0));
         cycleShift(keys[i].d, 4, 28, buffer + 4);
         buffer[3] |= temp >> 4;
-        memcpy(keys[i].k, buffer, 8);
-        permute(keys[i].k, keyPC2, 56, 48, keys[i].k);
+        permute(buffer, keyPC2, 56, 48, keys[i].k);
     }
 
     return keys;
@@ -187,11 +176,8 @@ Key *generateSubKey(unsigned char *key) {
 void feistel(unsigned char *data, unsigned char *key, unsigned char *result) {
     unsigned char buffer[20] = {0};
 
-    // printf("data");
-    // printBytes(data,4);
     permute(data, messageE, 32, 48, buffer);
-    // printf("ex");
-    // printBytes(buffer, 6);
+
     for (int i = 0; i < 6; i++) {
         buffer[i] ^= key[i];
     }
@@ -219,7 +205,8 @@ void process(unsigned char *data, unsigned char *key, unsigned char *result,
     printBytes(data, 8);
     // printf("key");printBytes(key,8);
     permute(data, IP, 64, 64, result);
-    Key *keys = generateSubKey(key);
+    Key keys[17] = {0};
+    generateSubKey(key, keys);
 
     int j;
     unsigned char buffer[20];
@@ -229,12 +216,9 @@ void process(unsigned char *data, unsigned char *key, unsigned char *result,
         } else {
             j = 16 - i + 1;
         }
-        // printf("res0");
-        // printBytes(result,8);
 
         permute(result, W, 64, 64, result);
-        // printf("res1");
-        // printBytes(result, 4);
+
         feistel(result, keys[j].k, buffer);
         for (int k = 0; k < 4; k++) {
             result[k + 4] ^= buffer[k];
