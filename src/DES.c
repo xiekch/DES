@@ -115,7 +115,7 @@ const int four2eight32[] = {5,  6,  7,  8,  13, 14, 15, 16, 21, 22, 23,
                             24, 29, 30, 31, 32, 37, 38, 39, 40, 45, 46,
                             47, 48, 53, 54, 55, 56, 61, 62, 63, 64};
 
-void permute(unsigned char *data, const int *permTable, int dataLen,
+void bitMapping(unsigned char *data, const int *permTable, int dataLen,
              int resultLen, unsigned char *result) {
     unsigned char src[20] = {0};
     memcpy(src, data, dataLen / 8 + (dataLen % 8 ? 1 : 0));
@@ -150,8 +150,8 @@ void cycleShift(unsigned char *data, int shiftBits, int len,
 
 Key *generateSubKey(unsigned char *key, Key *keys) {
     memset(keys, 0, sizeof(Key) * 17);
-    permute(key, keyPC1, 64, 28, keys[0].c);
-    permute(key, keyPC1 + 28, 64, 28, keys[0].d);
+    bitMapping(key, keyPC1, 64, 28, keys[0].c);
+    bitMapping(key, keyPC1 + 28, 64, 28, keys[0].d);
     unsigned char buffer[10];
     int shiftBits;
     for (int i = 1; i <= 16; i++) {
@@ -167,7 +167,7 @@ Key *generateSubKey(unsigned char *key, Key *keys) {
         unsigned char temp = (keys[i].d[0] & (0xf0));
         cycleShift(keys[i].d, 4, 28, buffer + 4);
         buffer[3] |= temp >> 4;
-        permute(buffer, keyPC2, 56, 48, keys[i].k);
+        bitMapping(buffer, keyPC2, 56, 48, keys[i].k);
     }
 
     return keys;
@@ -176,14 +176,14 @@ Key *generateSubKey(unsigned char *key, Key *keys) {
 void feistel(unsigned char *data, unsigned char *key, unsigned char *result) {
     unsigned char buffer[20] = {0};
 
-    permute(data, messageE, 32, 48, buffer);
+    bitMapping(data, messageE, 32, 48, buffer);
 
     for (int i = 0; i < 6; i++) {
         buffer[i] ^= key[i];
     }
 
     unsigned char row, column, group[8] = {0};
-    permute(buffer, eight2six64, 64, 64, buffer);
+    bitMapping(buffer, eight2six64, 64, 64, buffer);
     for (int i = 0; i < 8; i++) {
         row = 0;
         row |= ((buffer[i] & 0x80) >> 6);
@@ -195,18 +195,16 @@ void feistel(unsigned char *data, unsigned char *key, unsigned char *result) {
         group[i] = (unsigned char)(SBoxes[i][row * 16 + column]);
     }
 
-    permute(group, four2eight32, 64, 32, result);
-    permute(result, feistelP, 32, 32, result);
+    bitMapping(group, four2eight32, 64, 32, result);
+    bitMapping(result, feistelP, 32, 32, result);
 }
 
-void process(unsigned char *data, unsigned char *key, unsigned char *result,
+void process(unsigned char *data, Key *keys, unsigned char *result,
              int encrypt) {
     printf("data");
     printBytes(data, 8);
     // printf("key");printBytes(key,8);
-    permute(data, IP, 64, 64, result);
-    Key keys[17] = {0};
-    generateSubKey(key, keys);
+    bitMapping(data, IP, 64, 64, result);
 
     int j;
     unsigned char buffer[20];
@@ -217,7 +215,7 @@ void process(unsigned char *data, unsigned char *key, unsigned char *result,
             j = 16 - i + 1;
         }
 
-        permute(result, W, 64, 64, result);
+        bitMapping(result, W, 64, 64, result);
 
         feistel(result, keys[j].k, buffer);
         for (int k = 0; k < 4; k++) {
@@ -225,8 +223,8 @@ void process(unsigned char *data, unsigned char *key, unsigned char *result,
         }
     }
 
-    permute(result, W, 64, 64, result);
-    permute(result, IPReverse, 64, 64, result);
+    bitMapping(result, W, 64, 64, result);
+    bitMapping(result, IPReverse, 64, 64, result);
     printf("output");
     printBytes(result, 8);
 }
@@ -249,6 +247,8 @@ void DES(const char *inputFileName, const char *keyFileName,
         exit(1);
     }
     fclose(keyFile);
+    Key keys[17] = {0};
+    generateSubKey(key, keys);
 
     fseek(inputFile, 0, SEEK_END);
     int file_size = ftell(inputFile);
@@ -266,16 +266,16 @@ void DES(const char *inputFileName, const char *keyFileName,
                 if (padding < 8) {
                     memset(readBuffer + (8 - padding), padding, padding);
                 }
-                process(readBuffer, key, writeBuffer, encrypt);
+                process(readBuffer, keys, writeBuffer, encrypt);
                 fwrite(writeBuffer, 1, MESSBYTES, outputFile);
 
                 if (padding == 8) {
                     memset(readBuffer, padding, padding);
-                    process(readBuffer, key, writeBuffer, encrypt);
+                    process(readBuffer, keys, writeBuffer, encrypt);
                     fwrite(writeBuffer, 1, MESSBYTES, outputFile);
                 }
             } else {
-                process(readBuffer, key, writeBuffer, encrypt);
+                process(readBuffer, keys, writeBuffer, encrypt);
                 padding = writeBuffer[7];
                 if (padding < 8) {
                     fwrite(writeBuffer, 1, MESSBYTES - writeBuffer[7],
@@ -283,7 +283,7 @@ void DES(const char *inputFileName, const char *keyFileName,
                 }
             }
         } else {
-            process(readBuffer, key, writeBuffer, encrypt);
+            process(readBuffer, keys, writeBuffer, encrypt);
             fwrite(writeBuffer, 1, MESSBYTES, outputFile);
         }
     }
