@@ -1,7 +1,8 @@
 #include "DES.h"
-#include "stdio.h"
-#include "stdlib.h"
-#include "string.h"
+#include <math.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
 
 #define KEYBYTES 8
 #define MESSBYTES 8
@@ -12,8 +13,10 @@ typedef struct Key {
     unsigned char k[8];
     unsigned char c[4];
     unsigned char d[4];
-    // unsigned char cd[8];
 } Key;
+
+void printBytes(char *data, int len);
+void printKey(Key Key);
 
 const int IP[] = {58, 50, 42, 34, 26, 18, 10, 2, 60, 52, 44, 36, 28, 20, 12, 4,
                   62, 54, 46, 38, 30, 22, 14, 6, 64, 56, 48, 40, 32, 24, 16, 8,
@@ -91,26 +94,55 @@ const int keyPC2[] = {14, 17, 11, 24, 1,  5,  3,  28, 15, 6,  21, 10,
                       41, 52, 31, 37, 47, 55, 30, 40, 51, 45, 33, 48,
                       44, 49, 39, 56, 34, 53, 46, 42, 50, 36, 29, 32};
 
-void permute(const unsigned char *data, const int *permTable, int len,
-             unsigned char *result) {
+const int feistelP[] = {16, 7, 20, 21, 29, 12, 28, 17, 1,  15, 23,
+                        26, 5, 18, 31, 10, 2,  8,  24, 14, 32, 27,
+                        3,  9, 19, 13, 30, 6,  22, 11, 4,  25};
+
+const int W[] = {33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45,
+                 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58,
+                 59, 60, 61, 62, 63, 64, 1,  2,  3,  4,  5,  6,  7,
+                 8,  9,  10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20,
+                 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32};
+
+const int eight2six64[] = {
+    1,  2,  3,  4,  5,  6,  1, 1, 7,  8,  9,  10, 11, 12, 1, 1,
+    13, 14, 15, 16, 17, 18, 1, 1, 19, 20, 21, 22, 23, 24, 1, 1,
+    25, 26, 27, 28, 29, 30, 1, 1, 31, 32, 33, 34, 35, 36, 1, 1,
+    37, 38, 39, 40, 41, 42, 1, 1, 43, 44, 45, 46, 47, 48, 1, 1,
+};
+
+const int four2eight32[] = {5,  6,  7,  8,  13, 14, 15, 16, 21, 22, 23,
+                            24, 29, 30, 31, 32, 37, 38, 39, 40, 45, 46,
+                            47, 48, 53, 54, 55, 56, 61, 62, 63, 64};
+
+void permute(unsigned char *data, const int *permTable, int dataLen,
+             int resultLen, unsigned char *result) {
+    unsigned char src[20] = {0};
+    memcpy(src, data, dataLen / 8 + (dataLen % 8 ? 1 : 0));
+    memset(result, 0, resultLen / 8 + (resultLen % 8 ? 1 : 0));
+    // printBytes(result,8);
+
     unsigned char bit = 0;
-    for (int i = 0; i < len; i++) {
-        bit =
-            data[(permTable[i] - 1) / 8] & (0x80u >> ((permTable[i] - 1) % 8));
+    for (int i = 0; i < resultLen; i++) {
+        bit = src[(permTable[i] - 1) / 8] & (0x80u >> ((permTable[i] - 1) % 8));
         if (bit)
             result[i / 8] |= 0x80u >> (i % 8);
     }
 }
 
 // bit shift, avoid hardware-related shift (big end/little end)
-void cycleShift(const unsigned char *data, int shiftBits, int len,
-           unsigned char *result) {
+void cycleShift(unsigned char *data, int shiftBits, int len,
+                unsigned char *result) {
     // shiftBits > 0 : left shift
-    unsigned char temp = (data[0] & (0xff << (8 - shiftBits)));
+    unsigned char src[20] = {0};
+    memcpy(src, data, len / 8 + (len % 8 ? 1 : 0));
+    memset(result, 0, len / 8 + (len % 8 ? 1 : 0));
+
+    unsigned char temp = (src[0] & (0xff << (8 - shiftBits)));
 
     unsigned char bit = 0;
     for (int i = 0; i < len; i++) {
-        bit = data[(i + shiftBits) / 8] & (0x80u >> ((i + shiftBits) % 8));
+        bit = src[(i + shiftBits) / 8] & (0x80u >> ((i + shiftBits) % 8));
         if (bit)
             result[i / 8] |= 0x80u >> (i % 8);
     }
@@ -118,10 +150,18 @@ void cycleShift(const unsigned char *data, int shiftBits, int len,
 }
 
 Key *generateSubKey(unsigned char *key) {
-    Key *keys = (Key *)calloc(17, sizeof(Key));
-    permute(key, keyPC1, 28, keys[0].c);
-    permute(key, keyPC1 + 28, 28, keys[0].d);
 
+    Key *keys = (Key *)calloc(17, sizeof(Key));
+    // printf("kk");
+    // printBytes(key, 8);
+    // permute(key,keyPC1,,keys[0].k);
+    permute(key, keyPC1, 64, 28, keys[0].c);
+    permute(key, keyPC1 + 28, 64, 28, keys[0].d);
+    // memcpy(keys[0].c,keys[0].k,4);
+    // memcpy(keys[0].d,keys[0].k+3,4);
+    // cycleShift(keys[0].d,4,32,keys[0].d);
+    // printf("keyg");
+    // printKey(keys[0]);
     unsigned char buffer[10];
     int shiftBits;
     for (int i = 1; i <= 16; i++) {
@@ -133,26 +173,86 @@ Key *generateSubKey(unsigned char *key) {
         cycleShift(keys[i - 1].c, shiftBits, 28, keys[i].c);
         cycleShift(keys[i - 1].d, shiftBits, 28, keys[i].d);
 
-        strncpy(buffer, keys[i].c, 4);
-        shiftBits = 4;
-        unsigned char temp = (keys[i].d[0] & (0xff << (8 - shiftBits)));
+        memcpy(buffer, keys[i].c, 4);
+        unsigned char temp = (keys[i].d[0] & (0xf0));
         cycleShift(keys[i].d, 4, 28, buffer + 4);
         buffer[3] |= temp >> 4;
-
-        permute(buffer, keyPC2, 48, keys[i].k);
+        memcpy(keys[i].k, buffer, 8);
+        permute(keys[i].k, keyPC2, 56, 48, keys[i].k);
     }
 
     return keys;
 }
 
-void process(unsigned char *data, unsigned char *key) {}
+void feistel(unsigned char *data, unsigned char *key, unsigned char *result) {
+    unsigned char buffer[20] = {0};
 
-void encrypt(const char *keyFileName, const char *plainFileName,
-             const char *cipherFileName) {
+    // printf("data");
+    // printBytes(data,4);
+    permute(data, messageE, 32, 48, buffer);
+    // printf("ex");
+    // printBytes(buffer, 6);
+    for (int i = 0; i < 6; i++) {
+        buffer[i] ^= key[i];
+    }
+
+    unsigned char row, column, group[8] = {0};
+    permute(buffer, eight2six64, 64, 64, buffer);
+    for (int i = 0; i < 8; i++) {
+        row = 0;
+        row |= ((buffer[i] & 0x80) >> 6);
+        row |= ((buffer[i] & 0x04) >> 2);
+
+        column = 0;
+        column |= ((buffer[i] & 0x78) >> 3);
+
+        group[i] = (unsigned char)(SBoxes[i][row * 16 + column]);
+    }
+
+    permute(group, four2eight32, 64, 32, result);
+    permute(result, feistelP, 32, 32, result);
+}
+
+void process(unsigned char *data, unsigned char *key, unsigned char *result,
+             int encrypt) {
+    printf("data");
+    printBytes(data, 8);
+    // printf("key");printBytes(key,8);
+    permute(data, IP, 64, 64, result);
+    Key *keys = generateSubKey(key);
+
+    int j;
+    unsigned char buffer[20];
+    for (int i = 1; i <= 16; i++) {
+        if (encrypt) {
+            j = i;
+        } else {
+            j = 16 - i + 1;
+        }
+        // printf("res0");
+        // printBytes(result,8);
+
+        permute(result, W, 64, 64, result);
+        // printf("res1");
+        // printBytes(result, 4);
+        feistel(result, keys[j].k, buffer);
+        for (int k = 0; k < 4; k++) {
+            result[k + 4] ^= buffer[k];
+        }
+    }
+
+    permute(result, W, 64, 64, result);
+    permute(result, IPReverse, 64, 64, result);
+    printf("output");
+    printBytes(result, 8);
+}
+
+void DES(const char *inputFileName, const char *keyFileName,
+         const char *outputFileName, int encrypt) {
     FILE *keyFile = fopen(keyFileName, "rb");
-    FILE *plainFile = fopen(plainFileName, "rb");
-    FILE *cipherFile = fopen(cipherFileName, "wb");
-    if (keyFile == NULL || plainFile == NULL || cipherFile == NULL) {
+    FILE *inputFile = fopen(inputFileName, "rb");
+    FILE *outputFile = fopen(outputFileName, "wb");
+    if (keyFile == NULL || inputFile == NULL || outputFile == NULL) {
         fprintf(stderr, "File open error\n");
         exit(1);
     }
@@ -166,96 +266,82 @@ void encrypt(const char *keyFileName, const char *plainFileName,
     }
     fclose(keyFile);
 
-    fseek(plainFile, 0, SEEK_END);
-    int file_size = ftell(plainFile);
-    fseek(plainFile, 0, SEEK_SET);
+    fseek(inputFile, 0, SEEK_END);
+    int file_size = ftell(inputFile);
+    fseek(inputFile, 0, SEEK_SET);
     int lastCount = file_size / 8 + ((file_size % 8) ? 1 : 0);
     unsigned char readBuffer[MESSBYTES + 10];
     unsigned char writeBuffer[MESSBYTES + 10];
     readCount = 0;
-    while (fread(readBuffer, 1, MESSBYTES, plainFile)) {
+    while (fread(readBuffer, 1, MESSBYTES, inputFile)) {
+        memset(writeBuffer, 0, sizeof(writeBuffer));
         readCount++;
         if (readCount == lastCount) {
-            process(readBuffer, key);
+            unsigned char padding = 8 - file_size % 8;
+            if (encrypt) {
+                if (padding < 8) {
+                    memset(readBuffer + (8 - padding), padding, padding);
+                }
+                process(readBuffer, key, writeBuffer, encrypt);
+                fwrite(writeBuffer, 1, MESSBYTES, outputFile);
+
+                if (padding == 8) {
+                    memset(readBuffer, padding, padding);
+                    process(readBuffer, key, writeBuffer, encrypt);
+                    fwrite(writeBuffer, 1, MESSBYTES, outputFile);
+                }
+            } else {
+                process(readBuffer, key, writeBuffer, encrypt);
+                padding = writeBuffer[7];
+                if (padding < 8) {
+                    fwrite(writeBuffer, 1, MESSBYTES - writeBuffer[7],
+                           outputFile);
+                }
+            }
         } else {
-            fwrite(writeBuffer, 1, MESSBYTES, cipherFile);
+            process(readBuffer, key, writeBuffer, encrypt);
+            fwrite(writeBuffer, 1, MESSBYTES, outputFile);
         }
     }
 
-    fclose(plainFile);
-    fclose(cipherFile);
+    fclose(inputFile);
+    fclose(outputFile);
 }
 
-void decrypt(const char *keyFileName, const char *cipherFileName,
-             const char *plainFileName) {
-    FILE *keyFile = fopen(keyFileName, "rb");
-    FILE *cipherFile = fopen(cipherFileName, "rb");
-    FILE *plainFile = fopen(plainFileName, "wb");
-    if (keyFile == NULL || plainFile == NULL || cipherFile == NULL) {
-        fprintf(stderr, "File open error\n");
-        exit(1);
-    }
-
-    unsigned char key[KEYBYTES + 5];
-    int readCount = 0;
-    readCount = fread(key, 1, KEYBYTES, keyFile);
-    if (readCount != KEYBYTES) {
-        fprintf(stderr, "Key is too short\n");
-        exit(1);
-    }
-
-    fclose(keyFile);
-    fclose(plainFile);
-    fclose(cipherFile);
+void encryptData(const char *keyFileName, const char *plainFileName,
+                 const char *cipherFileName) {
+    printf("encrypt\n");
+    DES(plainFileName, keyFileName, cipherFileName, 1);
 }
 
-void print_char_as_binary(unsigned char input) {
-    int i;
-    for (i = 0; i < 8; i++) {
-        unsigned char shift_byte = 0x01 << (7 - i);
-        if (shift_byte & input) {
-            printf("1");
-        } else {
-            printf("0");
+void decryptData(const char *keyFileName, const char *cipherFileName,
+                 const char *plainFileName) {
+    printf("decrypt\n");
+    DES(cipherFileName, keyFileName, plainFileName, 0);
+}
+
+void printBytes(char *data, int len) {
+    for (int i = 0; i < len; i++) {
+        printf("%02X : ", data[i] & 0xff);
+        for (int j = 0; j < 8; j++) {
+            unsigned char byte = 0x01 << (7 - j);
+            if (byte & data[i]) {
+                printf("1");
+            } else {
+                printf("0");
+            }
         }
-    }
-}
-
-void print_Key(Key Key) {
-    int i;
-    printf("K: \n");
-    for (i = 0; i < 8; i++) {
-        printf("%02X : ", Key.k[i] & 0xff);
-        print_char_as_binary(Key.k[i]);
-        printf("\n");
-    }
-    printf("\nC: \n");
-
-    for (i = 0; i < 4; i++) {
-        printf("%02x : ", Key.c[i] & 0xff);
-        print_char_as_binary(Key.c[i]);
-        printf("\n");
-    }
-    printf("\nD: \n");
-
-    for (i = 0; i < 4; i++) {
-        printf("%02X : ", Key.d[i] & 0xff);
-        print_char_as_binary(Key.d[i]);
         printf("\n");
     }
     printf("\n");
 }
 
-int main() {
-    unsigned char key[] = {0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff};
-    // int table[]={8,7,6,5,4,3,2,1};
-    // unsigned char buffer[]={0};
-    // permute(key,table,8,buffer);
-    // printf("%2x\n",buffer[0]&0xff);
-    Key *keys = generateSubKey(key);
-    for (int i = 0; i < 17; i++) {
-        printf("%d: \n", i);
-        print_Key(keys[i]);
+void generateKey(const char *keyFileName) {
+    FILE *keyFile = fopen(keyFileName, "wb");
+    char key[8];
+    for (int i = 0; i < 8; i++) {
+        key[i] = (char)(rand() % 0xff);
     }
-    free(keys);
+    fwrite(key, 1, KEYBYTES, keyFile);
+    fclose(keyFile);
 }
