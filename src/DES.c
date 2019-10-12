@@ -116,7 +116,7 @@ const int four2eight32[] = {5,  6,  7,  8,  13, 14, 15, 16, 21, 22, 23,
                             47, 48, 53, 54, 55, 56, 61, 62, 63, 64};
 
 void bitMapping(unsigned char *data, const int *permTable, int dataLen,
-             int resultLen, unsigned char *result) {
+                int resultLen, unsigned char *result) {
     unsigned char src[20] = {0};
     memcpy(src, data, dataLen / 8 + (dataLen % 8 ? 1 : 0));
     memset(result, 0, resultLen / 8 + (resultLen % 8 ? 1 : 0));
@@ -133,19 +133,13 @@ void bitMapping(unsigned char *data, const int *permTable, int dataLen,
 // shiftBits > 0 : left shift
 void cycleShift(unsigned char *data, int shiftBits, int len,
                 unsigned char *result) {
-    unsigned char src[20] = {0};
-    memcpy(src, data, len / 8 + (len % 8 ? 1 : 0));
-    memset(result, 0, len / 8 + (len % 8 ? 1 : 0));
-
-    unsigned char temp = (src[0] & (0xff << (8 - shiftBits)));
-
-    unsigned char bit = 0;
+    int map[100] = {0};
     for (int i = 0; i < len; i++) {
-        bit = src[(i + shiftBits) / 8] & (0x80u >> ((i + shiftBits) % 8));
-        if (bit)
-            result[i / 8] |= 0x80u >> (i % 8);
+        map[i] = (i + shiftBits) % len + 1;
+        // printf("%d ",map[i]);
     }
-    result[(len - 1) / 8] |= temp >> ((len % 8) - shiftBits);
+    // printf("\n");
+    bitMapping(data, map, len, len, result);
 }
 
 Key *generateSubKey(unsigned char *key, Key *keys) {

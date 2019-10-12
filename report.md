@@ -66,7 +66,11 @@ Feistel轮函数由输入产生Feistel函数的结果。
 
 用unsigned char 代表一个字节。
 
-本人采用一种创新的方式：将轮换、字节拆解（8转6，4转8）和移位按照位映射的方式处理。
+本人采用一种创新的方式：将轮换、字节拆解（8转6，4转8）和移位按照位映射的方式统一处理。如此，用映射数组代替操作代码，大大减少了代码量。
+
+加密和解密调用同一函数`process`，只是通过传入不同参数而使调用子密钥的顺序相反。
+
+通过模块分解，将DES分解为几大函数：`bitMapping`, `generateSubKey`,  `feistel`和`process`，得以较好的完成算法流程。
 
 ## 运行结果
 
@@ -87,10 +91,33 @@ Feistel轮函数由输入产生Feistel函数的结果。
 
 ## 编译运行方法
 
-将要加密的内容存入`test.txt`，将密钥存放于`des.key`。编译运行即在`plain.txt`中得到密文，在`plain.txt`中得到解密后的明文。在`log.txt`存放运行的中间结果。
+编译方式
 
 ```shell
 gcc ./DES.c ./main.c -std=c99 -o a
-./a >log.txt
+```
+
+运行格式
+
+```
+./a inputFilename keyFilename outputFilename mode
+```
+
+mode为1表示加密，mode为0表示解密
+
+例：
+
+将要加密的内容存入`test.txt`，将密钥存放于`des.key`。编译运行即在`cipher.txt`中得到密文，在`plain.txt`中得到解密后的明文。在`log.txt`存放运行的中间结果。
+
+加密
+
+```
+./a test.txt des.key cipher.txt 1 >log.txt
+```
+
+解密
+
+```
+./a cipher.txt des.key plain.txt 0 >log.txt
 ```
 
